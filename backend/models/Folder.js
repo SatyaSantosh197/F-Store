@@ -6,8 +6,9 @@ const folderSchema = new mongoose.Schema({
   passwordHash: { type: String, required: false },
   visibility: { type: String, enum: ['private', 'public'], default: 'private' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  createdAt: { type: Date, default: Date.now },
+  mods: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   files: [{ type: mongoose.Schema.Types.ObjectId, ref: 'File' }],
+  parentFolder: { type: mongoose.Schema.Types.ObjectId, ref: 'Folder', required: false },
   log: [
     {
       action: { type: String, required: true },
@@ -15,6 +16,6 @@ const folderSchema = new mongoose.Schema({
       performedAt: { type: Date, default: Date.now },
     },
   ],
-});
+}, { timestamps: true });
 
 module.exports = mongoose.model('Folder', folderSchema);

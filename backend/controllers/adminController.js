@@ -30,7 +30,9 @@ exports.signupAdmin = async (req, res) => {
       return res.status(400).json({ message: 'Invalid details' });
     }
 
-    const existingAdmin = await Admin.findOne({ email });
+    const normalizedEmail = email.toLowerCase();
+
+    const existingAdmin = await Admin.findOne({ email: normalizedEmail });
     if (existingAdmin) {
       return res.status(400).json({ message: 'Admin with this email already exists' });
     }
@@ -39,7 +41,7 @@ exports.signupAdmin = async (req, res) => {
 
     const admin = new Admin({
       username,
-      email,
+      email: normalizedEmail,
       password: hashedPassword,
     });
 
@@ -70,13 +72,24 @@ exports.loginAdmin = async (req, res) => {
 
     res.cookie('admin_jwt', token, {
       httpOnly: true,
-      maxAge: 3600000,
+      maxAge: 10800000,
       secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
     });
 
-    res.status(200).json({ message: 'Admin login successful', token });
+    res.status(200).json({ message: 'Admin login successful' });
   } catch (error) {
     console.error('Error during admin login:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+exports.listPendingUsers = async (req, res) => {
+  try {
+    const pendingUsers = await User.find({ isApproved: false });
+    res.status(200).json({ pendingUsers });
+  } catch (error) {
+    console.error('Error fetching pending users:', error);
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };

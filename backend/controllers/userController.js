@@ -10,7 +10,9 @@ exports.signupUser = async (req, res) => {
       return res.status(400).json({ message: 'Invalid details' });
     }
 
-    const existingEmail = await User.findOne({ email });
+    const normalizedEmail = email.toLowerCase();
+
+    const existingEmail = await User.findOne({ email: normalizedEmail });
     if (existingEmail) {
       return res.status(400).json({ message: 'Email already taken' });
     }
@@ -24,9 +26,9 @@ exports.signupUser = async (req, res) => {
 
     const user = new User({
       username,
-      email,
+      email: normalizedEmail,
       password: hashedPassword,
-      isApproved: false, // Initially kept on hold
+      isApproved: false,
     });
 
     await user.save();
@@ -58,16 +60,14 @@ exports.loginUser = async (req, res) => {
 
     const token = jwt.sign({ id: user._id, role: 'user' }, process.env.JWT_SECRET_KEY, { expiresIn: '1h' });
 
-    user.jwtToken = token;
-    await user.save();
-
     res.cookie('user_jwt', token, {
       httpOnly: true,
-      maxAge: 3600000,
-      secure: process.env.NODE_ENV === 'production',
+      maxAge: 10800000,
+      secure: process.env.NODE_ENV === 'production', 
+      sameSite: 'lax', 
     });
 
-    res.status(200).json({ message: 'Login successful', token });
+    res.status(200).json({ message: 'Login successful' });
   } catch (error) {
     console.error('Error during user login:', error);
     res.status(500).json({ message: 'Internal Server Error' });

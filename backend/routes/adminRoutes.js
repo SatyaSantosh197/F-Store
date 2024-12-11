@@ -5,5 +5,6 @@ const router = express.Router();
 router.post('/signup', adminController.signupAdmin);
 router.post('/login', adminController.loginAdmin);
 router.post('/approve-user', adminController.approveUser);
+router.get('/getPendingUsers', adminController.listPendingUsers);
 
 module.exports = router;
