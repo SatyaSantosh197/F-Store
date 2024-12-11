@@ -4,19 +4,22 @@ const { isModOrOwnerOrAdmin, canAddFiles, canModify, canModifyFile} = require('.
 
 
 exports.createFolder = async (req, res) => {
-  const { name, locked, password, visibility, parentFolderId } = req.body;
+  const { name, locked = false, password, visibility = 'public' } = req.body;
+  const parentFolderId = req.headers['parent-folder-id'] || null; // Detect parentFolderId from headers
   const user = req.user;
 
   try {
     let passwordHash = null;
-    let folderLocked = false;
+    let folderLocked = locked;
 
+    // Handle locked and password conditions
     if (locked && password) {
       passwordHash = await bcrypt.hash(password, 10);
-      folderLocked = true;
+    } else if (locked && !password) {
+      return res.status(400).json({ message: 'Password is required when locking a folder.' });
     }
 
-    // If a parent folder is provided, validate its existence and permissions
+    // Check if parentFolderId is valid or detect root creation
     let parentFolder = null;
     if (parentFolderId) {
       parentFolder = await Folder.findById(parentFolderId);
@@ -28,11 +31,12 @@ exports.createFolder = async (req, res) => {
       }
     }
 
+    // Create the folder
     const folder = new Folder({
       name,
       locked: folderLocked,
       passwordHash,
-      visibility: visibility || 'private',
+      visibility,
       createdBy: user.id,
       parentFolder: parentFolderId || null,
       mods: [], // Initially empty
@@ -47,6 +51,7 @@ exports.createFolder = async (req, res) => {
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };
+
 
 exports.renameFolder = async (req, res) => {
   const { folderId } = req.params;
@@ -84,18 +89,41 @@ exports.deleteFolder = async (req, res) => {
       return res.status(403).json({ message: 'Unauthorized: You cannot delete this folder.' });
     }
 
-    // Ensure folder has no subfolders or files
-    const subfolders = await Folder.find({ parentFolder: folderId });
-    if (subfolders.length > 0) {
-      return res.status(400).json({ message: 'Cannot delete a folder with subfolders' });
-    }
+    // Recursive function to delete a folder, its subfolders, and files
+    const deleteFolderAndSubfolders = async (folderId) => {
+      // Find all subfolders of the current folder
+      const subfolders = await Folder.find({ parentFolder: folderId });
 
-    if (folder.files.length > 0) {
-      return res.status(400).json({ message: 'Cannot delete a folder with files' });
-    }
+      // Recursively delete all subfolders
+      for (const subfolder of subfolders) {
+        await deleteFolderAndSubfolders(subfolder._id);
+      }
 
-    await folder.deleteOne();
-    res.status(200).json({ message: 'Folder deleted successfully' });
+      // Find all files in the current folder
+      const files = await File.find({ folder: folderId });
+
+      // Notify Telegram bot to delete associated files
+      for (const file of files) {
+        try {
+          await telegramService.telegramService.deleteFileFromTelegram(file.telegramFileId);
+          console.log(`Deleted file from Telegram: ${file.name}`);
+        } catch (err) {
+          console.error(`Error deleting file from Telegram: ${file.name}`, err.message);
+        }
+
+        // Delete the file from the database
+        await file.deleteOne();
+      }
+
+      // Delete the current folder
+      await Folder.findByIdAndDelete(folderId);
+      console.log(`Deleted folder: ${folderId}`);
+    };
+
+    // Start recursive deletion
+    await deleteFolderAndSubfolders(folderId);
+
+    res.status(200).json({ message: 'Folder, its subfolders, and associated files deleted successfully' });
   } catch (error) {
     console.error('Error deleting folder:', error);
     res.status(500).json({ message: 'Internal Server Error' });

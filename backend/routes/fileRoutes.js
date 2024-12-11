@@ -8,6 +8,5 @@ router.get('/download/:fileId', authenticateUser, fileController.downloadFile);
 router.post('/rename/:fileId', authenticateUser, fileController.renameFile);
 router.delete('/delete/:fileId', authenticateUser, fileController.deleteFile);
 router.post('/move/:fileId', authenticateUser, fileController.moveFile);
-router.post('/toggle-visibility/:fileId', authenticateUser, fileController.toggleVisibility);
 
 module.exports = router;

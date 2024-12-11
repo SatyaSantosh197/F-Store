@@ -23,25 +23,28 @@ exports.uploadFile = async (req, res) => {
       if (!folder) {
         return res.status(404).json({ message: 'Folder not found' });
       }
-
-      if (!canAddFiles(folder, user)) {
-        return res.status(403).json({ message: 'You do not have permission to add files to this folder.' });
-      }
     }
 
-    const existingFile = await File.findOne({ name, folder: folderId });
-    if (existingFile) {
-      existingFile.version += 1;
-      existingFile.log.push({ action: 'version updated', performedBy: user.id });
-      await existingFile.save();
-      return res.status(200).json({ message: 'New version uploaded', file: existingFile });
+    // Detect file type and handle upload
+    const mimeType = fileData.mimetype;
+    const actualFileName = fileData.name; // Preserve the uploaded file's original name
+    let uploadResult;
+
+    if (mimeType.startsWith('image/')) {
+      uploadResult = await telegramService.uploadFileToTelegram(fileData.data, actualFileName, 'photo');
+    } else if (mimeType.startsWith('video/')) {
+      uploadResult = await telegramService.uploadFileToTelegram(fileData.data, actualFileName, 'video');
+    } else {
+      uploadResult = await telegramService.uploadFileToTelegram(fileData.data, actualFileName, 'document');
     }
 
-    const telegramFileId = await telegramService.uploadFileToTelegram(fileData.data, fileData.name);
+    const { fileId, messageId } = uploadResult; // Extract fileId and messageId
 
     const file = new File({
-      name,
-      telegramFileId,
+      name: name || actualFileName, // Use provided name or fall back to the original
+      actualFileName, // Store the original name
+      telegramFileId: fileId, // Use the fileId from upload result
+      telegramMessageId: messageId, // Use the messageId from upload result
       folder: folderId || null,
       createdBy: user.id,
       log: [{ action: 'uploaded', performedBy: user.id }],
@@ -56,8 +59,8 @@ exports.uploadFile = async (req, res) => {
 
     res.status(201).json({ message: 'File uploaded successfully', file });
   } catch (error) {
-    console.error('Error uploading file:', error);
-    res.status(500).json({ message: 'Internal Server Error' });
+    console.error('Error uploading file:', error.message);
+    res.status(500).json({ message: 'Internal Server Error', error: error.message });
   }
 };
 
@@ -73,18 +76,20 @@ exports.downloadFile = async (req, res) => {
     file.log.push({ action: 'downloaded', performedBy: user.id });
     await file.save();
 
-    // Get file link from Telegram and initiate download
+    // Get the original file from Telegram
     const fileLink = await telegramService.getTelegramFileLink(file.telegramFileId);
     const response = await axios.get(fileLink, { responseType: 'stream' });
 
-    // Prepare file for download
-    const fileExtension = path.extname(file.name) || '.jpg';
-    const fileNameWithExtension = `${file.name}${fileExtension}`;
+    // Ensure the original file name and extension are used
+    const fileNameWithExtension = file.actualFileName;
+    const fileExtension = path.extname(fileNameWithExtension) || '.bin'; // Default to '.bin' if no extension
     const mimeType = mime.lookup(fileExtension) || 'application/octet-stream';
 
+    // Set response headers for high-quality download
     res.setHeader('Content-Disposition', `attachment; filename="${fileNameWithExtension}"`);
     res.setHeader('Content-Type', mimeType);
 
+    // Stream the file to the client
     response.data.pipe(res);
   } catch (error) {
     console.error('Error downloading file:', error);
@@ -145,19 +150,24 @@ exports.deleteFile = async (req, res) => {
         return res.status(403).json({ message: 'Unauthorized: You cannot delete this file.' });
       }
     } else {
-      // If no folder, creator or admin can delete
       if (file.createdBy.toString() !== user.id.toString() && user.role !== 'admin') {
         return res.status(403).json({ message: 'Unauthorized: You cannot delete this file.' });
       }
     }
 
+    // Delete the file from Telegram
+    await telegramService.deleteFileFromTelegram(process.env.TELEGRAM_CHAT_ID, file.telegramMessageId);
+
+    // Delete the file from the database
     await file.deleteOne();
+
     res.status(200).json({ message: 'File deleted successfully' });
   } catch (error) {
-    console.error('Error deleting file:', error);
+    console.error('Error deleting file:', error.message);
     res.status(500).json({ message: 'Internal Server Error', error: error.message });
   }
 };
+
 
 exports.moveFile = async (req, res) => {
   const { fileId } = req.params;
