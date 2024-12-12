@@ -44,39 +44,6 @@
  *           format: date-time
  *       required: [username, email, password]
  *
- *     FileLogEntry:
- *       type: object
- *       properties:
- *         action:
- *           type: string
- *         performedBy:
- *           type: string
- *         performedAt:
- *           type: string
- *           format: date-time
- *
- *     File:
- *       type: object
- *       properties:
- *         name:
- *           type: string
- *         version:
- *           type: number
- *         telegramFileId:
- *           type: string
- *         folder:
- *           type: string
- *         createdBy:
- *           type: string
- *         createdAt:
- *           type: string
- *           format: date-time
- *         log:
- *           type: array
- *           items:
- *             $ref: '#/components/schemas/FileLogEntry'
- *       required: [name, telegramFileId, createdBy]
- *
  *     FolderLogEntry:
  *       type: object
  *       properties:
@@ -123,5 +90,39 @@
  *           type: string
  *           format: date-time
  *       required: [name, createdBy]
+ *
+ *     FileLogEntry:
+ *       type: object
+ *       properties:
+ *         action:
+ *           type: string
+ *         performedBy:
+ *           type: string
+ *         performedAt:
+ *           type: string
+ *           format: date-time
+ *
+ *     File:
+ *       type: object
+ *       properties:
+ *         name:
+ *           type: string
+ *         actualFileName:
+ *           type: string
+ *         telegramFileId:
+ *           type: string
+ *         telegramMessageId:
+ *           type: string
+ *         folder:
+ *           type: string
+ *         createdBy:
+ *           type: string
+ *         createdAt:
+ *           type: string
+ *           format: date-time
+ *         log:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/FileLogEntry'
+ *       required: [name, actualFileName, telegramFileId, telegramMessageId, createdBy]
  */
-

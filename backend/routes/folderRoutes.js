@@ -11,7 +11,10 @@ router.post('/unlock/:folderId', authenticateUser, folderController.unlockFolder
 router.post('/open/:folderId', authenticateUser, folderController.openFolder);
 router.post('/toggle-visibility/:folderId', authenticateUser, folderController.toggleVisibility);
 router.post('/addMod/:folderId', authenticateUser, folderController.addModToFolder);
-router.get('/search', authenticateUser, folderController.searchFilesAndFolders);
+router.post('/removeMod/:folderId', authenticateUser, folderController.removeModFromFolder);
+router.get('/searchContent', authenticateUser, folderController.searchFilesAndFolders);
+router.get('/searchUser', authenticateUser, folderController.searchUser);
 router.get('/contents/:folderId', authenticateUser, folderController.listFilesAndSubfolders);
+router.get('/redirect/:folderId', authenticateUser, folderController.redirectToFolder);
 
 module.exports = router;

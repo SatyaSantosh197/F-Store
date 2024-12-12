@@ -282,6 +282,31 @@
 
 /**
  * @swagger
+ * /api/folders/toggle-visibility/{folderId}:
+ *   post:
+ *     summary: Toggle folder visibility (public/private)
+ *     tags: [Folder]
+ *     parameters:
+ *       - in: path
+ *         name: folderId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the folder to toggle visibility
+ *     responses:
+ *       "200":
+ *         description: Folder visibility toggled successfully
+ *       "403":
+ *         description: Unauthorized to toggle visibility
+ *       "404":
+ *         description: Folder not found
+ *       "500":
+ *         description: Internal Server Error
+ */
+
+
+/**
+ * @swagger
  * /api/folders/lock/{folderId}:
  *   post:
  *     summary: Lock a folder
@@ -360,36 +385,23 @@
  *         required: true
  *         schema:
  *           type: string
+ *         description: The ID of the folder to open
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 description: The password for locked folders (if required)
  *     responses:
  *       "200":
  *         description: Folder opened successfully
  *       "401":
- *         description: Folder is locked
+ *         description: Incorrect or missing password
  *       "403":
  *         description: Unauthorized to open private folder
- *       "404":
- *         description: Folder not found
- *       "500":
- *         description: Internal Server Error
- */
-
-/**
- * @swagger
- * /api/folders/toggle-visibility/{folderId}:
- *   post:
- *     summary: Toggle folder visibility (public/private)
- *     tags: [Folder]
- *     parameters:
- *       - in: path
- *         name: folderId
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       "200":
- *         description: Folder visibility toggled
- *       "403":
- *         description: Unauthorized
  *       "404":
  *         description: Folder not found
  *       "500":
@@ -431,7 +443,40 @@
 
 /**
  * @swagger
- * /api/folders/search:
+ * /api/folders/removeMod/{folderId}:
+ *   post:
+ *     summary: Remove a mod from a folder
+ *     tags: [Folder]
+ *     parameters:
+ *       - in: path
+ *         name: folderId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The ID of the folder
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             properties:
+ *               modUserId:
+ *                 type: string
+ *                 description: The ID of the user to remove as mod
+ *     responses:
+ *       "200":
+ *         description: Mod removed successfully
+ *       "404":
+ *         description: Folder or user not found
+ *       "403":
+ *         description: Unauthorized to remove mod
+ *       "500":
+ *         description: Internal Server Error
+ */
+
+/**
+ * @swagger
+ * /api/folders/searchContent:
  *   get:
  *     summary: Search files and folders
  *     tags: [Folder]
@@ -459,6 +504,30 @@
 
 /**
  * @swagger
+ * /api/folders/searchUser:
+ *   get:
+ *     summary: Search for users to add as mods
+ *     tags: [Folder]
+ *     parameters:
+ *       - in: query
+ *         name: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The search query (username or email)
+ *     responses:
+ *       "200":
+ *         description: Users fetched successfully
+ *       "400":
+ *         description: Query parameter is required
+ *       "500":
+ *         description: Internal Server Error
+ */
+
+
+
+/**
+ * @swagger
  * /api/folders/contents/{folderId}:
  *   get:
  *     summary: List files and subfolders in a folder
@@ -469,16 +538,84 @@
  *         required: true
  *         schema:
  *           type: string
+ *         description: The ID of the folder to list
  *     responses:
  *       "200":
- *         description: Contents retrieved successfully
+ *         description: Folder contents retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 folder:
+ *                   type: object
+ *                   properties:
+ *                     name:
+ *                       type: string
+ *                     id:
+ *                       type: string
+ *                     visibility:
+ *                       type: string
+ *                       enum: [private, public]
+ *                     locked:
+ *                       type: boolean
+ *                     createdBy:
+ *                       type: string
+ *                 files:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       name:
+ *                         type: string
+ *                       id:
+ *                         type: string
+ *                 subfolders:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       name:
+ *                         type: string
+ *                       id:
+ *                         type: string
  *       "403":
- *         description: Unauthorized
+ *         description: Unauthorized to view contents of private folder
  *       "404":
  *         description: Folder not found
  *       "500":
  *         description: Internal Server Error
  */
+
+/**
+ * @swagger
+ * /api/folders/redirect/{folderId}:
+ *   get:
+ *     summary: Redirect to a folder's contents
+ *     tags: [Folder]
+ *     parameters:
+ *       - in: path
+ *         name: folderId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The ID of the folder to redirect to
+ *     responses:
+ *       "200":
+ *         description: Redirected to folder contents successfully
+ *       "401":
+ *         description: Folder is locked. Please unlock it first.
+ *       "403":
+ *         description: Unauthorized to access private folder
+ *       "404":
+ *         description: Folder not found
+ *       "500":
+ *         description: Internal Server Error
+ */
+
+
 
 /**
  * @swagger
@@ -535,28 +672,6 @@
  *         description: Internal Server Error
  */
 
-
-/**
- * @swagger
- * /api/files/download/{fileId}:
- *   get:
- *     summary: Download a file
- *     tags: [File]
- *     parameters:
- *       - in: path
- *         name: fileId
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       "200":
- *         description: File downloaded
- *       "404":
- *         description: File not found
- *       "500":
- *         description: Internal Server Error
- */
-
 /**
  * @swagger
  * /api/files/rename/{fileId}:
@@ -590,29 +705,6 @@
 
 /**
  * @swagger
- * /api/files/delete/{fileId}:
- *   delete:
- *     summary: Delete a file
- *     tags: [File]
- *     parameters:
- *       - in: path
- *         name: fileId
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       "200":
- *         description: File deleted
- *       "403":
- *         description: Unauthorized
- *       "404":
- *         description: File or folder not found
- *       "500":
- *         description: Internal Server Error
- */
-
-/**
- * @swagger
  * /api/files/move/{fileId}:
  *   post:
  *     summary: Move a file to another folder
@@ -634,6 +726,50 @@
  *     responses:
  *       "200":
  *         description: File moved successfully
+ *       "403":
+ *         description: Unauthorized
+ *       "404":
+ *         description: File or folder not found
+ *       "500":
+ *         description: Internal Server Error
+ */
+
+/**
+ * @swagger
+ * /api/files/download/{fileId}:
+ *   get:
+ *     summary: Download a file
+ *     tags: [File]
+ *     parameters:
+ *       - in: path
+ *         name: fileId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       "200":
+ *         description: File downloaded
+ *       "404":
+ *         description: File not found
+ *       "500":
+ *         description: Internal Server Error
+ */
+
+/**
+ * @swagger
+ * /api/files/delete/{fileId}:
+ *   delete:
+ *     summary: Delete a file
+ *     tags: [File]
+ *     parameters:
+ *       - in: path
+ *         name: fileId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       "200":
+ *         description: File deleted
  *       "403":
  *         description: Unauthorized
  *       "404":

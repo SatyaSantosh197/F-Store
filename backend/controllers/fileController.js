@@ -34,9 +34,16 @@ exports.uploadFile = async (req, res) => {
       uploadResult = await telegramService.uploadFileToTelegram(fileData.data, actualFileName, 'photo');
     } else if (mimeType.startsWith('video/')) {
       uploadResult = await telegramService.uploadFileToTelegram(fileData.data, actualFileName, 'video');
+    } else if (mimeType.startsWith('audio/')) {
+      uploadResult = await telegramService.uploadFileToTelegram(fileData.data, actualFileName, 'audio');
+    } else if (mimeType === 'application/pdf') {
+      uploadResult = await telegramService.uploadFileToTelegram(fileData.data, actualFileName, 'document'); // PDFs are handled as documents
+    } else if (mimeType.startsWith('application/')) {
+      uploadResult = await telegramService.uploadFileToTelegram(fileData.data, actualFileName, 'document'); // General application types
     } else {
-      uploadResult = await telegramService.uploadFileToTelegram(fileData.data, actualFileName, 'document');
+      uploadResult = await telegramService.uploadFileToTelegram(fileData.data, actualFileName, 'document'); // Default to document
     }
+    
 
     const { fileId, messageId } = uploadResult; // Extract fileId and messageId
 
@@ -76,23 +83,28 @@ exports.downloadFile = async (req, res) => {
     file.log.push({ action: 'downloaded', performedBy: user.id });
     await file.save();
 
-    // Get the original file from Telegram
+    // Get the file link from Telegram
     const fileLink = await telegramService.getTelegramFileLink(file.telegramFileId);
     const response = await axios.get(fileLink, { responseType: 'stream' });
 
     // Ensure the original file name and extension are used
-    const fileNameWithExtension = file.actualFileName;
-    const fileExtension = path.extname(fileNameWithExtension) || '.bin'; // Default to '.bin' if no extension
+    const fileNameWithExtension = file.actualFileName || `file-${file._id}`; // Fallback if no name is provided
+    const fileExtension = path.extname(fileNameWithExtension);
     const mimeType = mime.lookup(fileExtension) || 'application/octet-stream';
 
-    // Set response headers for high-quality download
+    // Set response headers for proper file download
     res.setHeader('Content-Disposition', `attachment; filename="${fileNameWithExtension}"`);
     res.setHeader('Content-Type', mimeType);
 
     // Stream the file to the client
     response.data.pipe(res);
   } catch (error) {
-    console.error('Error downloading file:', error);
+    if (error.response && error.response.status === 404) {
+      console.error('Error: File not found on Telegram:', error.message);
+      return res.status(404).json({ message: 'File not found on Telegram' });
+    }
+
+    console.error('Error downloading file:', error.message);
     res.status(500).json({ message: 'Internal Server Error', error: error.message });
   }
 };
@@ -167,7 +179,6 @@ exports.deleteFile = async (req, res) => {
     res.status(500).json({ message: 'Internal Server Error', error: error.message });
   }
 };
-
 
 exports.moveFile = async (req, res) => {
   const { fileId } = req.params;

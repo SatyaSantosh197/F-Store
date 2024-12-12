@@ -1,57 +1,54 @@
-const Folder = require('../models/Folder');
+const { isOwner, isMod, canAddFiles, canModify, canModifyFile } = require('../helpers/folderPermissions');
+const telegramService = require('../services/telegramService');
 const bcrypt = require('bcryptjs');
-const { isModOrOwnerOrAdmin, canAddFiles, canModify, canModifyFile} = require('../helpers/folderPermissions');
+
+const Folder = require('../models/Folder');
+const File = require('../models/File');
+const User = require('../models/User');
 
 
 exports.createFolder = async (req, res) => {
   const { name, locked = false, password, visibility = 'public' } = req.body;
-  const parentFolderId = req.headers['parent-folder-id'] || null; // Detect parentFolderId from headers
+  const parentFolderId = req.headers['parent-folder-id'] || null;
   const user = req.user;
 
   try {
     let passwordHash = null;
-    let folderLocked = locked;
 
-    // Handle locked and password conditions
     if (locked && password) {
       passwordHash = await bcrypt.hash(password, 10);
     } else if (locked && !password) {
       return res.status(400).json({ message: 'Password is required when locking a folder.' });
     }
 
-    // Check if parentFolderId is valid or detect root creation
     let parentFolder = null;
     if (parentFolderId) {
       parentFolder = await Folder.findById(parentFolderId);
       if (!parentFolder) return res.status(404).json({ message: 'Parent folder not found' });
 
-      // Check if the user can add a subfolder
-      if (!isModOrOwnerOrAdmin(parentFolder, user)) {
+      if (!isOwner(parentFolder, user) && !isMod(parentFolder, user)) {
         return res.status(403).json({ message: 'Unauthorized: You cannot create a folder inside this parent folder.' });
       }
     }
 
-    // Create the folder
     const folder = new Folder({
       name,
-      locked: folderLocked,
+      locked,
       passwordHash,
       visibility,
       createdBy: user.id,
       parentFolder: parentFolderId || null,
-      mods: [], // Initially empty
+      mods: [user.id],
       log: [{ action: 'created', performedBy: user.id }],
     });
 
     await folder.save();
-
     res.status(201).json({ message: 'Folder created successfully', folder });
   } catch (error) {
     console.error('Error creating folder:', error);
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };
-
 
 exports.renameFolder = async (req, res) => {
   const { folderId } = req.params;
@@ -85,42 +82,29 @@ exports.deleteFolder = async (req, res) => {
     const folder = await Folder.findById(folderId);
     if (!folder) return res.status(404).json({ message: 'Folder not found' });
 
-    if (!canModify(folder, user)) {
+    if (!isOwner(folder, user)) {
       return res.status(403).json({ message: 'Unauthorized: You cannot delete this folder.' });
     }
 
-    // Recursive function to delete a folder, its subfolders, and files
     const deleteFolderAndSubfolders = async (folderId) => {
-      // Find all subfolders of the current folder
       const subfolders = await Folder.find({ parentFolder: folderId });
-
-      // Recursively delete all subfolders
       for (const subfolder of subfolders) {
         await deleteFolderAndSubfolders(subfolder._id);
       }
 
-      // Find all files in the current folder
       const files = await File.find({ folder: folderId });
-
-      // Notify Telegram bot to delete associated files
       for (const file of files) {
         try {
-          await telegramService.telegramService.deleteFileFromTelegram(file.telegramFileId);
-          console.log(`Deleted file from Telegram: ${file.name}`);
+          await telegramService.deleteFileFromTelegram(file.telegramFileId);
         } catch (err) {
           console.error(`Error deleting file from Telegram: ${file.name}`, err.message);
         }
-
-        // Delete the file from the database
         await file.deleteOne();
       }
 
-      // Delete the current folder
       await Folder.findByIdAndDelete(folderId);
-      console.log(`Deleted folder: ${folderId}`);
     };
 
-    // Start recursive deletion
     await deleteFolderAndSubfolders(folderId);
 
     res.status(200).json({ message: 'Folder, its subfolders, and associated files deleted successfully' });
@@ -138,7 +122,7 @@ exports.toggleVisibility = async (req, res) => {
     const folder = await Folder.findById(folderId);
     if (!folder) return res.status(404).json({ message: 'Folder not found' });
 
-    if (!isModOrOwnerOrAdmin(folder, user)) {
+    if (!canModify(folder, user)) {
       return res.status(403).json({ message: 'Unauthorized: You cannot update this folder.' });
     }
 
@@ -146,15 +130,13 @@ exports.toggleVisibility = async (req, res) => {
     folder.log.push({
       action: `changed visibility to ${folder.visibility}`,
       performedBy: user.id,
-      performedAt: new Date(),
     });
 
     await folder.save();
-
     res.status(200).json({ message: 'Folder visibility toggled successfully', folder });
   } catch (error) {
     console.error('Error toggling folder visibility:', error);
-    res.status(500).json({ message: 'Internal Server Error', error: error.message });
+    res.status(500).json({ message: 'Internal Server Error' });
   }
 };
 
@@ -167,8 +149,8 @@ exports.addModToFolder = async (req, res) => {
     const folder = await Folder.findById(folderId);
     if (!folder) return res.status(404).json({ message: 'Folder not found' });
 
-    if (folder.createdBy.toString() !== user.id.toString() && user.role !== 'admin') {
-      return res.status(403).json({ message: 'Unauthorized: You cannot add mods to this folder.' });
+    if (!isOwner(folder, user)) {
+      return res.status(403).json({ message: 'Unauthorized: Only the owner can add mods to this folder.' });
     }
 
     if (folder.mods.some(modId => modId.toString() === newModUserId)) {
@@ -195,8 +177,8 @@ exports.removeModFromFolder = async (req, res) => {
     const folder = await Folder.findById(folderId);
     if (!folder) return res.status(404).json({ message: 'Folder not found' });
 
-    if (folder.createdBy.toString() !== user.id.toString() && user.role !== 'admin') {
-      return res.status(403).json({ message: 'Unauthorized: You cannot remove mods from this folder.' });
+    if (!isOwner(folder, user)) {
+      return res.status(403).json({ message: 'Unauthorized: Only the owner can remove mods from this folder.' });
     }
 
     folder.mods = folder.mods.filter(modId => modId.toString() !== modUserId);
@@ -206,6 +188,28 @@ exports.removeModFromFolder = async (req, res) => {
     res.status(200).json({ message: 'Mod removed successfully', folder });
   } catch (error) {
     console.error('Error removing mod from folder:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+exports.searchUser = async (req, res) => {
+  const { query } = req.query;
+  const user = req.user;
+
+  try {
+    if (!query) return res.status(400).json({ message: 'Query parameter is required' });
+
+    const users = await User.find({
+      $or: [
+        { username: { $regex: query, $options: 'i' } },
+        { email: { $regex: query, $options: 'i' } },
+      ],
+      _id: { $ne: user.id },
+    }).select('_id username email');
+
+    res.status(200).json({ message: 'Users fetched successfully', users });
+  } catch (error) {
+    console.error('Error searching users:', error);
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };
@@ -248,6 +252,7 @@ exports.lockFolder = async (req, res) => {
 
 exports.openFolder = async (req, res) => {
   const { folderId } = req.params;
+  const { password } = req.body; // Accept password from request body
   const user = req.user;
 
   try {
@@ -255,9 +260,17 @@ exports.openFolder = async (req, res) => {
     if (!folder) return res.status(404).json({ message: 'Folder not found' });
 
     if (folder.locked) {
-      return res.status(401).json({ message: 'Folder is locked. Unlock it first to access.' });
+      if (!password) {
+        return res.status(401).json({ message: 'Password required to open this folder.' });
+      }
+
+      const isMatch = await bcrypt.compare(password, folder.passwordHash);
+      if (!isMatch) {
+        return res.status(401).json({ message: 'Incorrect password. Access denied.' });
+      }
     }
 
+    // Check visibility and permissions for private folders
     if (folder.visibility === 'private' && !isModOrOwnerOrAdmin(folder, user)) {
       return res.status(403).json({ message: 'Unauthorized: You cannot open this private folder.' });
     }
@@ -312,41 +325,6 @@ exports.unlockFolder = async (req, res) => {
   }
 };
 
-exports.listFilesAndSubfolders = async (req, res) => {
-  const { folderId } = req.params;
-  const user = req.user;
-
-  try {
-    const folder = await Folder.findById(folderId);
-    if (!folder) return res.status(404).json({ message: 'Folder not found' });
-
-    // Check permissions: Only mods, owners, or admins can view private folders
-    if (folder.visibility === 'private' && !isModOrOwnerOrAdmin(folder, user)) {
-      return res.status(403).json({ message: 'Unauthorized: You cannot view the contents of this private folder.' });
-    }
-
-    // Get files and subfolders within the folder
-    const files = await File.find({ folder: folderId });
-    const subfolders = await Folder.find({ parentFolder: folderId });
-
-    res.status(200).json({
-      message: 'Contents retrieved successfully',
-      folder: {
-        name: folder.name,
-        id: folder._id,
-        visibility: folder.visibility,
-        locked: folder.locked,
-        createdBy: folder.createdBy,
-      },
-      files,
-      subfolders,
-    });
-  } catch (error) {
-    console.error('Error listing files and subfolders:', error);
-    res.status(500).json({ message: 'Internal Server Error' });
-  }
-};
-
 exports.searchFilesAndFolders = async (req, res) => {
   const { query, visibility } = req.query;
   const user = req.user;
@@ -379,6 +357,71 @@ exports.searchFilesAndFolders = async (req, res) => {
     res.status(200).json({ message: 'Search results', files, folders });
   } catch (error) {
     console.error('Error during search:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+exports.redirectToFolder = async (req, res) => {
+  const { folderId } = req.params;
+  const user = req.user;
+
+  try {
+    const folder = await Folder.findById(folderId);
+    if (!folder) return res.status(404).json({ message: 'Folder not found' });
+
+    if (folder.locked) {
+      return res.status(401).json({
+        message: 'Folder is locked. Please unlock it first to access.',
+        locked: true,
+      });
+    }
+
+    // If unlocked or not locked, list contents
+    const files = await File.find({ folder: folderId });
+    const subfolders = await Folder.find({ parentFolder: folderId });
+
+    res.status(200).json({
+      message: 'Redirected to folder contents successfully',
+      folder,
+      files,
+      subfolders,
+    });
+  } catch (error) {
+    console.error('Error redirecting to folder:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+exports.listFilesAndSubfolders = async (req, res) => {
+  const { folderId } = req.params;
+  const user = req.user;
+
+  try {
+    const folder = await Folder.findById(folderId);
+    if (!folder) return res.status(404).json({ message: 'Folder not found' });
+
+    // Check visibility and permissions for private folders
+    if (folder.visibility === 'private' && !isModOrOwnerOrAdmin(folder, user)) {
+      return res.status(403).json({ message: 'Unauthorized: You cannot view the contents of this private folder.' });
+    }
+
+    const files = await File.find({ folder: folderId });
+    const subfolders = await Folder.find({ parentFolder: folderId });
+
+    res.status(200).json({
+      message: 'Contents retrieved successfully',
+      folder: {
+        name: folder.name,
+        id: folder._id,
+        visibility: folder.visibility,
+        locked: folder.locked,
+        createdBy: folder.createdBy,
+      },
+      files,
+      subfolders,
+    });
+  } catch (error) {
+    console.error('Error listing files and subfolders:', error);
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };
