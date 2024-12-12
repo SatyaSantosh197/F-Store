@@ -25,9 +25,8 @@ exports.uploadFile = async (req, res) => {
       }
     }
 
-    // Detect file type and handle upload
     const mimeType = fileData.mimetype;
-    const actualFileName = fileData.name; // Preserve the uploaded file's original name
+    const actualFileName = fileData.name;
     let uploadResult;
 
     if (mimeType.startsWith('image/')) {
@@ -79,24 +78,19 @@ exports.downloadFile = async (req, res) => {
     const file = await File.findById(fileId);
     if (!file) return res.status(404).json({ message: 'File not found' });
 
-    // Log the download action
     file.log.push({ action: 'downloaded', performedBy: user.id });
     await file.save();
 
-    // Get the file link from Telegram
     const fileLink = await telegramService.getTelegramFileLink(file.telegramFileId);
     const response = await axios.get(fileLink, { responseType: 'stream' });
 
-    // Ensure the original file name and extension are used
-    const fileNameWithExtension = file.actualFileName || `file-${file._id}`; // Fallback if no name is provided
+    const fileNameWithExtension = file.actualFileName || `file-${file._id}`;
     const fileExtension = path.extname(fileNameWithExtension);
     const mimeType = mime.lookup(fileExtension) || 'application/octet-stream';
 
-    // Set response headers for proper file download
     res.setHeader('Content-Disposition', `attachment; filename="${fileNameWithExtension}"`);
     res.setHeader('Content-Type', mimeType);
 
-    // Stream the file to the client
     response.data.pipe(res);
   } catch (error) {
     if (error.response && error.response.status === 404) {
@@ -123,12 +117,10 @@ exports.renameFile = async (req, res) => {
       folder = await Folder.findById(file.folder);
       if (!folder) return res.status(404).json({ message: 'Folder not found' });
 
-      // Check if user can modify file (mod/owner/admin of that folder)
       if (!canModifyFile(folder, user)) {
         return res.status(403).json({ message: 'Unauthorized: You cannot rename this file.' });
       }
     } else {
-      // If file has no folder, only creator or admin can rename
       if (file.createdBy.toString() !== user.id.toString() && user.role !== 'admin') {
         return res.status(403).json({ message: 'Unauthorized: You cannot rename this file.' });
       }
@@ -170,7 +162,6 @@ exports.deleteFile = async (req, res) => {
     // Delete the file from Telegram
     await telegramService.deleteFileFromTelegram(process.env.TELEGRAM_CHAT_ID, file.telegramMessageId);
 
-    // Delete the file from the database
     await file.deleteOne();
 
     res.status(200).json({ message: 'File deleted successfully' });
@@ -194,22 +185,18 @@ exports.moveFile = async (req, res) => {
 
     if (!newFolder) return res.status(404).json({ message: 'Destination folder not found' });
 
-    // Check if the user has permissions to move the file
     if (!canModifyFile(currentFolder, user)) {
       return res.status(403).json({ message: 'Unauthorized: You cannot move this file.' });
     }
 
-    // Ensure the user can add files to the destination folder
     if (!canAddFiles(newFolder, user)) {
       return res.status(403).json({ message: 'You cannot add files to the destination folder.' });
     }
 
-    // Move the file
     file.folder = newFolderId;
     file.log.push({ action: 'moved', performedBy: user.id });
     await file.save();
 
-    // Update current and destination folders' file lists
     if (currentFolder) {
       currentFolder.files = currentFolder.files.filter(fId => fId.toString() !== fileId);
       await currentFolder.save();

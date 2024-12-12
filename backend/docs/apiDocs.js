@@ -65,7 +65,7 @@
 
 /**
  * @swagger
- * /api/admins/approve-user:
+ * /api/admins/approveUser:
  *   post:
  *     summary: Approve a user
  *     tags: [Admin]

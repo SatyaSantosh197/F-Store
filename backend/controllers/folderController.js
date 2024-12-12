@@ -252,7 +252,7 @@ exports.lockFolder = async (req, res) => {
 
 exports.openFolder = async (req, res) => {
   const { folderId } = req.params;
-  const { password } = req.body; // Accept password from request body
+  const { password } = req.body;
   const user = req.user;
 
   try {
@@ -270,12 +270,10 @@ exports.openFolder = async (req, res) => {
       }
     }
 
-    // Check visibility and permissions for private folders
     if (folder.visibility === 'private' && !isModOrOwnerOrAdmin(folder, user)) {
       return res.status(403).json({ message: 'Unauthorized: You cannot open this private folder.' });
     }
 
-    // Retrieve subfolders
     const subfolders = await Folder.find({ parentFolder: folderId });
 
     res.status(200).json({
@@ -335,14 +333,12 @@ exports.searchFilesAndFolders = async (req, res) => {
     }
 
     const searchConditions = {
-      name: { $regex: query, $options: 'i' }, // Case-insensitive regex search
+      name: { $regex: query, $options: 'i' }, 
     };
 
-    // Restrict results based on visibility
     if (visibility === 'public') {
       searchConditions.visibility = 'public';
     } else {
-      // Private files/folders should only be visible to their mods, owners, or admin
       searchConditions.$or = [
         { visibility: 'public' },
         { createdBy: user.id },
@@ -350,7 +346,6 @@ exports.searchFilesAndFolders = async (req, res) => {
       ];
     }
 
-    // Search in both files and folders
     const files = await File.find(searchConditions);
     const folders = await Folder.find(searchConditions);
 
@@ -376,7 +371,6 @@ exports.redirectToFolder = async (req, res) => {
       });
     }
 
-    // If unlocked or not locked, list contents
     const files = await File.find({ folder: folderId });
     const subfolders = await Folder.find({ parentFolder: folderId });
 
@@ -400,7 +394,6 @@ exports.listFilesAndSubfolders = async (req, res) => {
     const folder = await Folder.findById(folderId);
     if (!folder) return res.status(404).json({ message: 'Folder not found' });
 
-    // Check visibility and permissions for private folders
     if (folder.visibility === 'private' && !isModOrOwnerOrAdmin(folder, user)) {
       return res.status(403).json({ message: 'Unauthorized: You cannot view the contents of this private folder.' });
     }
